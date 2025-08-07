@@ -24,12 +24,6 @@ A command-line RSS feed aggregator written in Go that allows users to manage RSS
 - [Usage Guide](docs/USAGE.md) - Commands and examples  
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
-## Getting Started
-
-1. Follow the [Installation Guide](docs/INSTALLATION.md) to set up dependencies and database
-2. See [Usage Guide](docs/USAGE.md) for command examples
-3. Check [Troubleshooting Guide](docs/TROUBLESHOOTING.md) if you encounter issues
-
 ## Quick Example
 
 ```bash
@@ -69,6 +63,17 @@ A command-line RSS feed aggregator written in Go that allows users to manage RSS
 3. Make your changes
 4. Test thoroughly and run `sqlc generate` if needed
 5. Submit a pull request
+
+## 📚 About This Project
+
+This project was built as part of the **backend development curriculum** on [Boot.dev](https://boot.dev) - an online platform focused on teaching practical backend skills through hands-on coding projects.
+
+### What I learned:
+- Go programming fundamentals
+- PostgreSQL database design
+- SQL query optimization with sqlc
+- RSS feed parsing and aggregation
+- CLI application development
 
 ## License
 
