@@ -33,14 +33,14 @@ func Read() Config {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Errorf("error: could not read config file")
+		fmt.Errorf("error: could not read config file - %v\n", err)
 	}
 
 	usrConfig := Config{}
 	err = json.Unmarshal(data, &usrConfig)
 	if err != nil {
-		fmt.Errorf("error: could not unmarshal JSON: ", err)
-		fmt.Errorf("Raw data:", string(data))
+		fmt.Errorf("error: could not unmarshal JSON: %w\n", err)
+		fmt.Errorf("Raw data: %s\n", string(data))
 	}
 
 	return usrConfig
@@ -59,7 +59,7 @@ func getConfigFilePath() (string, error) {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Errorf("error: could not find home directory")
+		fmt.Errorf("error: could not find home directory - %v\n", err)
 	}
 
 	return home + "/" + configFileName, nil
@@ -69,12 +69,12 @@ func write(cfg Config) error {
 
 	data, err := json.Marshal(&cfg)
 	if err != nil {
-		fmt.Errorf("error: could not marshal config: ", err)
+		fmt.Errorf("error: could not marshal config: %v\n", err)
 	}
 
 	path, err := getConfigFilePath()
 	if err != nil {
-		fmt.Errorf("error: failed to get config file path", err)
+		fmt.Errorf("error: failed to get config file path: %v\n", err)
 	}
 
 	err = os.WriteFile(path, data, 0644)
