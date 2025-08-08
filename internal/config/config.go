@@ -13,10 +13,10 @@ type Config struct {
 	Current_user_name string `json:"current_user_name"`
 }
 
-func Read() Config {
+func Read() (Config, error) {
 	path, err := getConfigFilePath()
 	if err != nil {
-		fmt.Errorf("error: %s", err)
+		return Config{}, fmt.Errorf("error: %s", err)
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -33,17 +33,16 @@ func Read() Config {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Errorf("error: could not read config file - %v\n", err)
+		return Config{}, fmt.Errorf("error: could not read config file - %v\n", err)
 	}
 
 	usrConfig := Config{}
 	err = json.Unmarshal(data, &usrConfig)
 	if err != nil {
-		fmt.Errorf("error: could not unmarshal JSON: %w\n", err)
-		fmt.Errorf("Raw data: %s\n", string(data))
+		return Config{}, fmt.Errorf("error: could not unmarshal JSON: %w\nRaw data: %s\n", string(data), err)
 	}
 
-	return usrConfig
+	return usrConfig, nil
 }
 
 func SetUser(cfg Config, userName string) error {
@@ -56,7 +55,6 @@ func SetUser(cfg Config, userName string) error {
 }
 
 func getConfigFilePath() (string, error) {
-
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Errorf("error: could not find home directory - %v\n", err)
@@ -66,7 +64,6 @@ func getConfigFilePath() (string, error) {
 }
 
 func write(cfg Config) error {
-
 	data, err := json.Marshal(&cfg)
 	if err != nil {
 		fmt.Errorf("error: could not marshal config: %v\n", err)
@@ -76,7 +73,6 @@ func write(cfg Config) error {
 	if err != nil {
 		fmt.Errorf("error: failed to get config file path: %v\n", err)
 	}
-
-	err = os.WriteFile(path, data, 0644)
+	err = os.WriteFile(path, data, 0600)
 	return err
 }

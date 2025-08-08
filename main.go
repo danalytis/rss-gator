@@ -11,9 +11,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -94,7 +96,9 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 		return &RSSFeed{}, err
 	}
 	req.Header.Set("User-Agent", "gator")
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return &RSSFeed{}, err
@@ -194,26 +198,92 @@ func handlerGetUsers(s *state, cmd command) error {
 	return nil
 }
 
-// Continuously fetches feeds at specified duration
+// Continuously fetches feeds at specified duration with graceful shutdown
 func handlerAggregate(s *state, cmd command) error {
 	if len(cmd.args) < 1 {
 		return errors.New("missing required argument: time_between_reqs")
 	}
+
 	time_between_reqs := cmd.args[0]
 	timeDuration, err := time.ParseDuration(time_between_reqs)
 	if err != nil {
-		log.Fatal("error parsing time duration")
+		return fmt.Errorf("error parsing time duration '%s': %v", time_between_reqs, err)
 	}
-	fmt.Printf("Collecting feeds every %s\n", time_between_reqs)
+
+	if timeDuration <= 0 {
+		return fmt.Errorf("time duration must be  positive, got: %s", time_between_reqs)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	fmt.Printf("Collecting feeds every %s (Press Ctrl+C to stop gracefully)\n", time_between_reqs)
+
 	ticker := time.NewTicker(timeDuration)
-	for {
-		fmt.Println("collecting feeds..")
-		err := scrapeFeeds(s)
-		if err != nil {
-			log.Fatal("error scraping feeds")
-		}
-		<-ticker.C
+	defer ticker.Stop()
+
+	fmt.Println("Performing initial feed collection...")
+	if err := scrapeFeeds(s); err != nil {
+		log.Printf("Error in initial scrape: %v", err)
 	}
+
+	consecutiveFailures := 0
+	maxFailures := 5
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("\nAggregation cancelled by context")
+			return ctx.Err()
+
+		case sig := <-sigChan:
+			fmt.Printf("\nReceived signal %v, shutting down gracefully... \n", sig)
+			cancel()
+			return nil
+
+		case <-ticker.C:
+			fmt.Println("Collecting feeds...")
+
+			scrapeCtx, scrapeCancel := context.WithTimeout(ctx, 30*time.Second)
+			err := scrapeFeedsWithContext(scrapeCtx, s)
+			scrapeCancel()
+
+			if err != nil {
+				consecutiveFailures++
+				log.Printf("Error scraping feeds (%d/%d failures): %v",
+					consecutiveFailures, maxFailures, err)
+
+				if consecutiveFailures >= maxFailures {
+					log.Printf("Too many consecutive failures, backing off for %v", timeDuration*2)
+					select {
+					case <-time.After(timeDuration):
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			} else {
+				if consecutiveFailures > 0 {
+					log.Printf("Feed scraping recovered after %d failures", consecutiveFailures)
+					consecutiveFailures = 0
+				}
+			}
+		}
+	}
+}
+
+// Helper function accepts context cancellation
+func scrapeFeedsWithContext(ctx context.Context, s *state) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	// TODO: Modify scrapeFeeds to accept and use context
+	return scrapeFeeds(s)
 }
 
 // Create a new feed and follow it
@@ -488,7 +558,10 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 }
 
 func main() {
-	cfg := config.Read()
+	cfg, err := config.Read()
+	if err != nil {
+		log.Fatal("could not read config")
+	}
 
 	dbURL := cfg.Db_url
 
@@ -496,6 +569,7 @@ func main() {
 	if err != nil {
 		log.Fatal("could not connect to database")
 	}
+	defer db.Close()
 
 	dbQueries := database.New(db)
 	st := &state{
